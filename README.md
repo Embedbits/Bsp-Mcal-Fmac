@@ -14,7 +14,15 @@ This README is the landing page and the **specification of the interface** (mast
 own README with everything that is specific to the family: the instances of the device, their settings and the status of
 the implementation.
 
-> **Status: design.** No implementation exists yet, the interface below is a proposal. Stories and branches follow.
+> **Status: STM32H5 implemented (branch `Dev/STM32H5`).** The filter configuration with the memory layout, the
+> preload, the start and the stop of the filter, the block processing (POLL, ISR and DMA transfer modes), the streams
+> (circular and one shot buffers, half and complete callbacks), the vector functions (dot product, convolution,
+> correlation) and the error handling (saturation, underflow, overflow, Gpdma error) are implemented on the
+> STM32H562, H563, H573 and the STM32H5E / H5F lines. In DMA mode two Gpdma channels move the input samples and the
+> results, the FMAC interrupt only reports the errors. Unit tests run on all 12 lines, the integration tests run on the
+> STM32H563 (NUCLEO-H563ZI). The module is an empty interface (every function returns
+> `FMAC_REQUEST_ERROR`) on the lines without the accelerator. Other families are still a proposal, their own
+> branches follow.
 
 ---
 
@@ -70,7 +78,7 @@ master.
 
 | Family | Branch | Accelerator | Status |
 |---|---|---|---|
-| STM32H5 | `Dev/STM32H5` | `FMAC` on STM32H562, H563, H573 and the H5E / H5F lines: 16 x 16-bit multiplier, 24+2-bit accumulator, 256 x 16-bit local memory, FIR and IIR (direct form 1), dot product, convolution, correlation, circular buffers, DMA read and write channels; not on STM32H503 / H523 / H533 / H543 / H553 | planned (first) |
+| STM32H5 | `Dev/STM32H5` | `FMAC` on STM32H562, H563, H573 and the H5E / H5F lines: 16 x 16-bit multiplier, 24+2-bit accumulator, 256 x 16-bit local memory, FIR and IIR (direct form 1), dot product, convolution, correlation, circular buffers, DMA read and write channels; not on STM32H503 / H523 / H533 / H543 / H553 | implemented, unit tests on 12 lines, integration tests run on STM32H563 |
 | STM32G4 | `Dev/STM32G4` | `FMAC` | planned |
 | STM32H7 | `Dev/STM32H7` | `FMAC` on the lines that have it | planned |
 | STM32U5, STM32U3 | `Dev/STM32U5`, `Dev/STM32U3` | device dependent | planned |
