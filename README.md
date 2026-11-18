@@ -14,7 +14,30 @@ This README is the landing page and the **specification of the interface** (mast
 own README with everything that is specific to the family: the instances of the device, their settings and the status of
 the implementation.
 
-> **Status: design.** No implementation exists yet, the interface below is a proposal. Stories and branches follow.
+> **Status (STM32H7, branch `Dev/STM32H7`): implemented.** Port of the STM32H5 module to the FMAC of the STM32H723 /
+> H725 / H730 / H733 / H735 lines (RM0468 chapter 23 - the same registers, CMSIS bit definitions identical to STM32H5,
+> and the same protocol as RM0481 chapter 21): the filter configuration with the memory layout, the preload, the start
+> and the stop of the filter, the block processing (POLL, ISR and DMA transfer modes), the streams (circular and one
+> shot buffers, half and complete callbacks), the vector functions (dot product, convolution, correlation) and the error
+> handling (saturation, underflow, overflow, DMA error). The other STM32H7 lines and the STM32H7R / STM32H7S lines have
+> no FMAC: every function returns `FMAC_REQUEST_ERROR`. The module compiles without warnings for the 22 STM32H7 lines,
+> for the Cortex-M4 of the 6 dual-core lines and for the 4 STM32H7R / STM32H7S lines. Unit tests (Unity + CMock +
+> RegMem, 86 cases; the DMA cases on recording stubs of the Dma module): STM32H723 85 pass (the case of a line without
+> the FMAC is ignored), STM32H743, H755, H7A3, H7B3, H7R3, H7S7 (no FMAC) 2 pass. Integration tests (18 cases: the FIR /
+> IIR filters and the vector functions against a q1.15 reference in the POLL / ISR / DMA modes, one shot and circular
+> streams): the firmware builds for all 27 STM32H7 / H7R / H7S presets; NUCLEO-H723ZG 18 of 18 in 3 runs (DMA mode by
+> DMA1 streams 0 / 1), NUCLEO-H7A3ZI-Q and NUCLEO-H755ZI-Q (no FMAC) 1 pass and 17 ignored.
+>
+> **STM32H7 specifics:**
+>
+> - **DMA mode by the Dma module.** Two streams of DMA1 or DMA2 (default DMA1 stream 0 for the input samples, stream 1
+>   for the results) with the DMAMUX1 requests FMAC_WRITE / FMAC_READ (RM0468 Table 118) move one 16-bit sample per
+>   request (direct mode); a circular stream uses the circular mode of the stream. The DMA items of `fmac_Config_t` have
+>   the types of the Dma module (`fmac_DmaPeriphId_t`, `fmac_DmaChannelId_t`, `fmac_DmaPriority_t`; the Gpdma types on
+>   STM32H7R / H7S, which have no FMAC). A request has at most `FMAC_DMA_SAMPLE_CNT_MAX` = 65535 samples (`DMA_SxNDTR`).
+>   The buffers shall be in a memory that DMA1 / DMA2 reach (AXI SRAM, SRAM1 .. SRAM4, not the DTCM); with the data
+>   cache enabled the caller keeps them coherent.
+> - **Device errata.** ES0491 Rev 9 lists no FMAC erratum.
 
 ---
 
@@ -70,9 +93,9 @@ master.
 
 | Family | Branch | Accelerator | Status |
 |---|---|---|---|
-| STM32H5 | `Dev/STM32H5` | `FMAC` on STM32H562, H563, H573 and the H5E / H5F lines: 16 x 16-bit multiplier, 24+2-bit accumulator, 256 x 16-bit local memory, FIR and IIR (direct form 1), dot product, convolution, correlation, circular buffers, DMA read and write channels; not on STM32H503 / H523 / H533 / H543 / H553 | planned (first) |
+| STM32H5 | `Dev/STM32H5` | `FMAC` on STM32H562, H563, H573 and the H5E / H5F lines: 16 x 16-bit multiplier, 24+2-bit accumulator, 256 x 16-bit local memory, FIR and IIR (direct form 1), dot product, convolution, correlation, circular buffers, DMA read and write channels; not on STM32H503 / H523 / H533 / H543 / H553 | implemented, unit tests on 12 lines, integration tests run on STM32H563 |
 | STM32G4 | `Dev/STM32G4` | `FMAC` | planned |
-| STM32H7 | `Dev/STM32H7` | `FMAC` on the lines that have it | planned |
+| STM32H7 | `Dev/STM32H7` | `FMAC` on STM32H723, H725, H730, H733, H735 (RM0468), no FMAC on the other STM32H7 lines and on STM32H7R / H7S: as STM32H5; the DMA mode by DMA1 / DMA2 streams (Dma module) | implemented |
 | STM32U5, STM32U3 | `Dev/STM32U5`, `Dev/STM32U3` | device dependent | planned |
 | STM32F4, STM32F7, STM32L4 | `Dev/STM32F4` ... | no FMAC on the device - the module is a stub that returns `FMAC_REQUEST_ERROR` | planned |
 
@@ -176,7 +199,7 @@ const fmac_StreamRequest_t stream =
 
 - **Rcc** - peripheral clock and reset
 - **Nvic** - interrupt
-- **Gpdma** - DMA transfers of the input and the output data
+- **Dma** - DMA transfers of the input and the output data (DMA1 / DMA2 streams, DMAMUX1)
 - **RAL (Register Abstraction Layer)** - used internally to access the registers
 
 All mandatory RCC, NVIC and DMA configurations are handled internally.
@@ -202,7 +225,7 @@ The module follows the common rules of the MCAL layer, so that it behaves like t
   for the device line; a pin is an item `FMAC_<SIGNAL>_PIN_<INSTANCE>_P<port><pin>` and there is an `*_UNUSED` item. A choice
   that is not in the list cannot be written.
 - **Own peripheral only.** The module calls only the registers / LL functions of its own peripheral. The clocks, the
-  interrupts, the pins, the DMA and the EXTI lines go through the API of the Rcc, Nvic, Gpio, Gpdma and Exti modules; a
+  interrupts, the pins, the DMA and the EXTI lines go through the API of the Rcc, Nvic, Gpio, Dma and Exti modules; a
   missing function is added to that module, it is not bypassed.
 - **Init verifies itself.** `Fmac_Init` checks the result at the end; when it is not as required, the module is
   deinitialized and an error is returned. The waiting for the hardware is a loop on the register state with a timeout,
